@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <!-- iPad/iOS Tam ekran ve Zoom engelleme etiketleri eklendi -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Taktik Tahtası">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#1e3a8a">
+    <link rel="apple-touch-icon" href="https://placehold.co/180x180/1e3a8a/ffffff?text=11">
+    
+    <title>Futbol İlk 11 Kurucu & Taktik Tahtası</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+
+    <style>
+        .pitch-container {
+            width: 100%;
+            overflow-x: auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            touch-action: none; /* Prevent scroll on touch devices when drawing */
+        }
+
+        .pitch {
+            background-color: #4ade80;
+            background-image: repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 10%,
+                rgba(0, 0, 0, 0.04) 10%,
+                rgba(0, 0, 0, 0.04) 20%
+            );
+            border: 4px solid white;
+            position: relative;
+            overflow: hidden;
+            border-radius: 4px;
+            width: 100%;
+            min-width: 800px;
+            aspect-ratio: 1.6 / 1;
+            max-height: 85vh;
+            cursor: default;
+        }
+
+        /* Pitch Lines */
+        .pitch::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 2px;
+            height: 100%;
+            background-color: white;
+            transform: translateX(-50%);
+        }
+
+        .center-circle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 12%;
+            aspect-ratio: 1 / 1;
+            border: 2px solid white;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .center-spot {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 6px;
+            height: 6px;
+            background-color: white;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .penalty-area { position: absolute; top: 20%; height: 60%; width: 16%; border: 2px solid white; }
+        .penalty-area.left { left: 0; border-left: none; }
+        .penalty-area.right { right: 0; border-right: none; }
+        
+        .goal-area { position: absolute; top: 35%; height: 30%; width: 6%; border: 2px solid white; }
+        .goal-area.left { left: 0; border-left: none; }
+        .goal-area.right { right: 0; border-right: none; }
+        
+        .goal { position: absolute; top: 44%; height: 12%; width: 3%; border: 2px solid white; background-color: rgba(255,255,255,0.3); }
+        .goal.left { left: -3%; }
+        .goal.right { right: -3%; }
+
+        /* Player Tokens */
+        .player-token {
+            position: absolute;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 13px;
+            color: white;
+            border: 2px solid white;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            cursor: grab;
+            user-select: none;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            transition: box-shadow 0.2s, transform 0.1s;
+            z-index: 20; /* Above drawings */
+        }
+
+        .drawing-mode .player-token {
+            pointer-events: none; /* Disable token dragging while drawing */
+        }
+
+        .player-token:active {
+            cursor: grabbing;
+            transform: translate(-50%, -50%) scale(1.15); 
+            z-index: 30;
+        }
+
+        .player-token .player-name-label {
+            position: absolute;
+            bottom: -22px;
+            background-color: rgba(0, 0, 0, 0.75);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            white-space: nowrap;
+            pointer-events: none;
+            text-shadow: none;
+        }
+
+        body.dragging { overflow: hidden; touch-action: none; }
+        .list-group-item { cursor: move; }
+        .sortable-ghost { opacity: 0.4; background-color: #f3f4f6; }
+        
+        .football-token {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+            user-select: none;
+            transform: translate(-50%, -50%);
+            z-index: 25; /* Oyuncuların hemen altında, çizimlerin üstünde */
+            filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.5));
+            transition: transform 0.1s;
+        }
+        .drawing-mode .football-token {
+            pointer-events: none;
+        }
+        .football-token:active {
+            cursor: grabbing;
+            transform: translate(-50%, -50%) scale(1.2);
+            z-index: 35;
+        }
+
+        /* SVG Drawing Layer */
+        #drawingLayer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .tool-btn.active {
+            background-color: #3b82f6;
+            color: white;
+            border-color: #2563eb;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans h-screen flex flex-col md:flex-row overflow-hidden">
+
+    <!-- Sidebar Controls -->
+    <div class="w-full md:w-80 bg-white p-4 shadow-lg overflow-y-auto flex-shrink-0 z-30 border-r border-gray-200" style="max-height: 100vh;">
+        <h1 class="text-xl font-bold mb-4 text-center text-blue-800 border-b pb-2"><i class="fas fa-futbol mr-2"></i>Taktik Tahtası</h1>
+
+        <!-- Save / Load Section -->
+        <div class="mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200 text-sm">
+            <h2 class="font-semibold text-gray-700 mb-2"><i class="fas fa-save mr-1"></i> Kayıt İşlemleri</h2>
+            <div class="flex space-x-2 mb-2">
+                <select id="savedLineupsSelect" class="flex-1 p-1 border rounded focus:ring-blue-500">
+                    <option value="">Kayıtlı Kadro Seç...</option>
+                </select>
+                <button id="loadBtn" class="bg-blue-500 hover:bg-blue-600 text-white px-3 rounded"><i class="fas fa-download"></i></button>
+            </div>
+            <button id="saveBtn" class="w-full bg-green-500 hover:bg-green-600 text-white py-1.5 rounded transition"><i class="fas fa-plus mr-1"></i> Yeni Kadro Kaydet</button>
+        </div>
+
+        <!-- Mode Selection -->
+        <div class="mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+            <h2 class="font-semibold text-gray-700 mb-2"><i class="fas fa-cogs mr-1"></i> Mod Seçimi</h2>
+            <select id="modeSelect" class="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm mb-2">
+                <option value="single">Tek Takım</option>
+                <option value="dual">İki Takım (Yarı Saha)</option>
+                <option value="dual-mixed">İki Takım (Tam Saha / Girişken)</option>
+            </select>
+            <label class="flex items-center space-x-2 text-sm cursor-pointer mt-2 text-gray-700 border-t pt-2">
+                <input type="checkbox" id="snapToggle" class="form-checkbox h-4 w-4 text-blue-600 rounded">
+                <span><i class="fas fa-magnet text-blue-500 mr-1"></i> Adam Adama Yakala (Snap)</span>
+            </label>
+        </div>
+
+        <!-- Tactic Tools (Drawing) -->
+        <div class="mb-4 bg-yellow-50 p-3 rounded-lg border border-yellow-200 text-sm">
+            <div class="flex justify-between items-center mb-2">
+                <h2 class="font-semibold text-yellow-800"><i class="fas fa-pen mr-1"></i> Çizim Araçları</h2>
+                <input type="color" id="rectColorPicker" value="#facc15" class="h-6 w-8 rounded cursor-pointer border-none p-0" title="Bölge/Kutu Rengi">
+            </div>
+            <div class="flex flex-wrap gap-2 justify-center">
+                <button class="tool-btn active flex-1 py-1 px-2 border border-gray-300 rounded bg-white" data-tool="move" title="Oyuncu Taşı">
+                    <i class="fas fa-hand-pointer"></i>
+                </button>
+                <button class="tool-btn flex-1 py-1 px-2 border border-gray-300 rounded bg-white hover:bg-gray-100" data-tool="arrow" title="Koşu/Pas Yolu Çiz">
+                    <i class="fas fa-long-arrow-alt-right"></i>
+                </button>
+                <button class="tool-btn flex-1 py-1 px-2 border border-gray-300 rounded bg-white hover:bg-gray-100" data-tool="rect" title="Bölge İşaretle (Dikdörtgen)">
+                    <i class="far fa-square"></i>
+                </button>
+                <button class="tool-btn flex-1 py-1 px-2 border border-gray-300 rounded bg-white hover:bg-gray-100" data-tool="cross" title="Markaj (X)">
+                    <i class="fas fa-times text-red-600"></i>
+                </button>
+                <button class="tool-btn flex-1 py-1 px-2 border border-gray-300 rounded bg-white hover:bg-gray-100" data-tool="circle" title="Hedef (O)">
+                    <i class="far fa-circle text-blue-600"></i>
+                </button>
+                <button id="clearDrawingsBtn" class="flex-1 py-1 px-2 border border-red-300 rounded bg-red-100 hover:bg-red-200 text-red-800" title="Çizimleri Temizle">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Team 1 Settings -->
+        <div id="team1Settings" class="mb-4 bg-blue-50 p-3 rounded-lg border border-blue-200">
+            <h2 class="font-semibold text-blue-800 mb-2">Ev Sahibi (Takım 1)</h2>
+            <div class="mb-2 flex items-center justify-between text-sm">
+                <label>Parçalı Renkler:</label>
+                <div class="flex space-x-1">
+                    <input type="color" id="team1Color1" value="#ef4444" class="h-6 w-8 rounded cursor-pointer border-none p-0">
+                    <input type="color" id="team1Color2" value="#991b1b" class="h-6 w-8 rounded cursor-pointer border-none p-0">
+                </div>
+            </div>
+            <div class="mb-2">
+                <select id="team1Tactic" class="w-full p-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="4-4-2">4-4-2 (Klasik)</option>
+                    <option value="4-4-2-diamond">4-4-2 (Baklava)</option>
+                    <option value="4-3-3">4-3-3 (Ofansif)</option>
+                    <option value="4-3-3-defend">4-3-3 (Defansif)</option>
+                    <option value="4-2-3-1">4-2-3-1 (Geniş)</option>
+                    <option value="4-1-4-1">4-1-4-1</option>
+                    <option value="4-3-2-1">4-3-2-1 (Çam Ağacı)</option>
+                    <option value="3-5-2">3-5-2</option>
+                    <option value="3-4-3">3-4-3</option>
+                    <option value="5-4-1">5-4-1</option>
+                    <option value="5-3-2">5-3-2</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Team 2 Settings (Initially hidden) -->
+        <div id="team2Settings" class="mb-4 bg-red-50 p-3 rounded-lg border border-red-200 hidden">
+            <h2 class="font-semibold text-red-800 mb-2">Deplasman (Takım 2)</h2>
+            <div class="mb-2 flex items-center justify-between text-sm">
+                <label>Parçalı Renkler:</label>
+                <div class="flex space-x-1">
+                    <input type="color" id="team2Color1" value="#3b82f6" class="h-6 w-8 rounded cursor-pointer border-none p-0">
+                    <input type="color" id="team2Color2" value="#1e3a8a" class="h-6 w-8 rounded cursor-pointer border-none p-0">
+                </div>
+            </div>
+            <div class="mb-2">
+                <select id="team2Tactic" class="w-full p-2 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-red-500">
+                    <option value="4-4-2">4-4-2 (Klasik)</option>
+                    <option value="4-4-2-diamond">4-4-2 (Baklava)</option>
+                    <option value="4-3-3">4-3-3 (Ofansif)</option>
+                    <option value="4-3-3-defend">4-3-3 (Defansif)</option>
+                    <option value="4-2-3-1">4-2-3-1 (Geniş)</option>
+                    <option value="4-1-4-1">4-1-4-1</option>
+                    <option value="4-3-2-1">4-3-2-1 (Çam Ağacı)</option>
+                    <option value="3-5-2">3-5-2</option>
+                    <option value="3-4-3">3-4-3</option>
+                    <option value="5-4-1">5-4-1</option>
+                    <option value="5-3-2">5-3-2</option>
+                </select>
+            </div>
+        </div>
+
+        <button id="applyTacticsBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded transition duration-200 mb-4 text-sm">
+            <i class="fas fa-sync-alt mr-2"></i>Dizilişleri Sıfırla / Uygula
+        </button>
+
+        <!-- Player List Editor -->
+        <div>
+            <div class="flex justify-between items-center mb-2">
+                <h2 class="font-semibold text-gray-700 text-sm">Oyuncu Listesi</h2>
+                <select id="listTeamSelect" class="p-1 border rounded text-xs bg-gray-50">
+                    <option value="1">Takım 1</option>
+                    <option value="2" class="hidden team2-option">Takım 2</option>
+                </select>
+            </div>
+            <ul id="playerList" class="bg-white border rounded shadow-inner divide-y divide-gray-100 max-h-48 overflow-y-auto custom-scrollbar">
+                <!-- List items generated here -->
+            </ul>
+        </div>
+    </div>
+
+    <!-- Pitch Area -->
+    <div class="flex-1 p-2 md:p-6 bg-gray-200 relative pitch-container" id="pitchContainerWrapper">
+        <div class="pitch shadow-2xl" id="pitch">
+            <!-- SVG Drawing Layer -->
+            <svg id="drawingLayer">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                        <polygon points="0 0, 10 3.5, 0 7" fill="#1f2937" />
+                    </marker>
+                </defs>
+                <g id="drawingsGroup"></g>
+            </svg>
+
+            <!-- Pitch markings -->
+            <div class="center-circle"></div>
+            <div class="center-spot"></div>
+            <div class="penalty-area left"></div>
+            <div class="goal-area left"></div>
+            <div class="goal left"></div>
+            <div class="penalty-area right"></div>
+            <div class="goal-area right"></div>
+            <div class="goal right"></div>
+
+            <!-- Football -->
+            <div id="football" class="football-token">⚽</div>
+
+            <!-- Player tokens injected here -->
+        </div>
+    </div>
+
+    <script>
+        // State
+        let currentMode = 'single'; // single, dual, dual-mixed
+        let currentTool = 'move'; // move, arrow, rect, cross, circle
+        let draggedToken = null;
+        let drawings = [];
+        let isDrawing = false;
+        let currentDrawing = null;
+        let snapEnabled = false;
+        let ball = { id: 'ball', x: 50, y: 50 };
+        
+        // Default Team Data
+        let team1 = {
+            id: 1, color1: '#ef4444', color2: '#991b1b', tactic: '4-4-2',
+            players: Array.from({length: 11}, (_, i) => ({ id: `t1-p${i+1}`, num: i+1, name: `Ev Sahibi ${i+1}`, x: null, y: null }))
+        };
+
+        let team2 = {
+            id: 2, color1: '#3b82f6', color2: '#1e3a8a', tactic: '4-4-2',
+            players: Array.from({length: 11}, (_, i) => ({ id: `t2-p${i+1}`, num: i+1, name: `Deplasman ${i+1}`, x: null, y: null }))
+        };
+
+        // DOM Elements
+        const pitch = document.getElementById('pitch');
+        const drawingsGroup = document.getElementById('drawingsGroup');
+        const modeSelect = document.getElementById('modeSelect');
+        const snapToggle = document.getElementById('snapToggle');
+        const footballEl = document.getElementById('football');
+        const team2Settings = document.getElementById('team2Settings');
+        const playerList = document.getElementById('playerList');
+        const listTeamSelect = document.getElementById('listTeamSelect');
+        const team2Options = document.querySelectorAll('.team2-option');
+
+        // Tactic Definitions (Base X, Y percentages for left half of pitch: X=0 to ~50)
+        const tactics = {
+            '4-4-2': [ {x: 5, y: 50}, {x: 20, y: 15}, {x: 15, y: 35}, {x: 15, y: 65}, {x: 20, y: 85}, {x: 35, y: 15}, {x: 30, y: 40}, {x: 30, y: 60}, {x: 35, y: 85}, {x: 45, y: 40}, {x: 45, y: 60} ],
+            '4-4-2-diamond': [ {x: 5, y: 50}, {x: 20, y: 15}, {x: 15, y: 35}, {x: 15, y: 65}, {x: 20, y: 85}, {x: 27, y: 50}, {x: 33, y: 20}, {x: 33, y: 80}, {x: 40, y: 50}, {x: 46, y: 40}, {x: 46, y: 60} ],
+            '4-3-3': [ {x: 5, y: 50}, {x: 20, y: 15}, {x: 15, y: 35}, {x: 15, y: 65}, {x: 20, y: 85}, {x: 28, y: 50}, {x: 35, y: 30}, {x: 35, y: 70}, {x: 44, y: 15}, {x: 46, y: 50}, {x: 44, y: 85} ],
+            '4-3-3-defend': [ {x: 5, y: 50}, {x: 20, y: 15}, {x: 15, y: 35}, {x: 15, y: 65}, {x: 20, y: 85}, {x: 26, y: 35}, {x: 26, y: 65}, {x: 33, y: 50}, {x: 42, y: 20}, {x: 46, y: 50}, {x: 42, y: 80} ],
+            '4-2-3-1': [ {x: 5, y: 50}, {x: 20, y: 15}, {x: 15, y: 35}, {x: 15, y: 65}, {x: 20, y: 85}, {x: 26, y: 35}, {x: 26, y: 65}, {x: 38, y: 20}, {x: 36, y: 50}, {x: 38, y: 80}, {x: 46, y: 50} ],
+            '4-1-4-1': [ {x: 5, y: 50}, {x: 20, y: 15}, {x: 15, y: 35}, {x: 15, y: 65}, {x: 20, y: 85}, {x: 26, y: 50}, {x: 35, y: 15}, {x: 33, y: 35}, {x: 33, y: 65}, {x: 35, y: 85}, {x: 45, y: 50} ],
+            '4-3-2-1': [ {x: 5, y: 50}, {x: 20, y: 15}, {x: 15, y: 35}, {x: 15, y: 65}, {x: 20, y: 85}, {x: 30, y: 25}, {x: 28, y: 50}, {x: 30, y: 75}, {x: 38, y: 35}, {x: 38, y: 65}, {x: 46, y: 50} ],
+            '3-5-2': [ {x: 5, y: 50}, {x: 15, y: 25}, {x: 13, y: 50}, {x: 15, y: 75}, {x: 25, y: 12}, {x: 28, y: 35}, {x: 36, y: 50}, {x: 28, y: 65}, {x: 25, y: 88}, {x: 45, y: 35}, {x: 45, y: 65} ],
+            '3-4-3': [ {x: 5, y: 50}, {x: 15, y: 25}, {x: 13, y: 50}, {x: 15, y: 75}, {x: 28, y: 15}, {x: 28, y: 40}, {x: 28, y: 60}, {x: 28, y: 85}, {x: 42, y: 20}, {x: 45, y: 50}, {x: 42, y: 80} ],
+            '5-4-1': [ {x: 5, y: 50}, {x: 18, y: 12}, {x: 15, y: 30}, {x: 13, y: 50}, {x: 15, y: 70}, {x: 18, y: 88}, {x: 30, y: 20}, {x: 28, y: 40}, {x: 28, y: 60}, {x: 30, y: 80}, {x: 45, y: 50} ],
+            '5-3-2': [ {x: 5, y: 50}, {x: 18, y: 10}, {x: 15, y: 30}, {x: 12, y: 50}, {x: 15, y: 70}, {x: 18, y: 90}, {x: 30, y: 25}, {x: 28, y: 50}, {x: 30, y: 75}, {x: 42, y: 35}, {x: 42, y: 65} ]
+        };
+
+        // Settings Events
+        modeSelect.addEventListener('change', (e) => {
+            currentMode = e.target.value;
+            if (currentMode === 'single') {
+                team2Settings.classList.add('hidden');
+                team2Options.forEach(opt => opt.classList.add('hidden'));
+                if (listTeamSelect.value === '2') listTeamSelect.value = '1';
+            } else {
+                team2Settings.classList.remove('hidden');
+                team2Options.forEach(opt => opt.classList.remove('hidden'));
+            }
+            renderPlayerList();
+            applyDefaultPositions(); 
+            renderPitch();
+        });
+
+        snapToggle.addEventListener('change', (e) => {
+            snapEnabled = e.target.checked;
+        });
+
+        // Color Inputs
+        ['1Color1', '1Color2', '2Color1', '2Color2'].forEach(id => {
+            document.getElementById(`team${id}`).addEventListener('input', (e) => {
+                const team = id.startsWith('1') ? team1 : team2;
+                team[id.endsWith('1') ? 'color1' : 'color2'] = e.target.value;
+                updateTokenColors();
+            });
+        });
+
+        // Tactics Select
+        document.getElementById('team1Tactic').addEventListener('change', (e) => { team1.tactic = e.target.value; });
+        document.getElementById('team2Tactic').addEventListener('change', (e) => { team2.tactic = e.target.value; });
+
+        document.getElementById('applyTacticsBtn').addEventListener('click', () => {
+            applyDefaultPositions();
+            renderPitch();
+        });
+
+        listTeamSelect.addEventListener('change', renderPlayerList);
+
+        // Tool Selection
+        document.querySelectorAll('.tool-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+                const targetBtn = e.target.closest('.tool-btn');
+                targetBtn.classList.add('active');
+                currentTool = targetBtn.dataset.tool;
+                
+                if (currentTool !== 'move') {
+                    pitch.classList.add('drawing-mode');
+                } else {
+                    pitch.classList.remove('drawing-mode');
+                }
+            });
+        });
+
+        document.getElementById('clearDrawingsBtn').addEventListener('click', () => {
+            drawings = [];
+            renderDrawings();
+        });
+
+        function renderPlayerList() {
+            const teamId = parseInt(listTeamSelect.value);
+            const team = teamId === 1 ? team1 : team2;
+            
+            playerList.innerHTML = '';
+            team.players.forEach((player) => {
+                const li = document.createElement('li');
+                li.className = 'list-group-item flex items-center justify-between p-2 hover:bg-gray-50';
+                li.dataset.id = player.id;
+                
+                li.innerHTML = `
+                    <div class="flex items-center flex-1">
+                        <span class="w-6 text-gray-400 cursor-move mr-2 text-center"><i class="fas fa-grip-lines"></i></span>
+                        <input type="number" value="${player.num}" class="w-10 mr-2 p-1 border rounded text-xs text-center player-num-input" min="1" max="99">
+                        <input type="text" value="${player.name}" class="flex-1 p-1 border-b border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none text-sm bg-transparent player-name-input">
+                    </div>
+                `;
+
+                li.querySelector('.player-num-input').addEventListener('change', (e) => {
+                    player.num = e.target.value;
+                    updateTokenData(player.id);
+                });
+
+                li.querySelector('.player-name-input').addEventListener('input', (e) => {
+                    player.name = e.target.value;
+                    updateTokenData(player.id);
+                });
+
+                playerList.appendChild(li);
+            });
+
+            new Sortable(playerList, {
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                onEnd: function () {
+                    const newOrderList = Array.from(playerList.children).map(li => li.dataset.id);
+                    const newPlayersArray = [];
+                    newOrderList.forEach(id => {
+                        const player = team.players.find(p => p.id === id);
+                        if(player) newPlayersArray.push(player);
+                    });
+                    team.players = newPlayersArray;
+                    // Apply tactics based on new list order
+                    applyDefaultPositions();
+                    renderPitch();
+                },
+            });
+        }
+
+        function applyDefaultPositions() {
+            setTeamPositions(team1, tactics[team1.tactic], false);
+            if (currentMode !== 'single') {
+                setTeamPositions(team2, tactics[team2.tactic], true);
+            }
+        }
+
+        function setTeamPositions(team, tacticConfig, isTeam2) {
+            team.players.forEach((player, index) => {
+                if (index >= tacticConfig.length) return;
+                const pos = tacticConfig[index];
+                
+                let targetX = pos.x;
+                let targetY = pos.y;
+
+                if (isTeam2) {
+                    if (currentMode === 'dual') {
+                        // Mirror exactly on the right half
+                        targetX = 100 - pos.x;
+                    } else if (currentMode === 'dual-mixed') {
+                        // Stretch across full pitch (Right to Left)
+                        targetX = 100 - (pos.x * 1.8);
+                        // Slight Y offset to avoid perfect overlap
+                        targetY = pos.y + (Math.random() * 4 - 2); 
+                    }
+                } else if (currentMode === 'dual-mixed') {
+                     // Stretch across full pitch (Left to Right)
+                     targetX = pos.x * 1.8;
+                }
+
+                player.x = targetX;
+                player.y = targetY;
+            });
+        }
+
+        function renderPitch() {
+            // Remove existing tokens
+            document.querySelectorAll('.player-token').forEach(t => t.remove());
+
+            renderTeamTokens(team1);
+            if (currentMode !== 'single') {
+                renderTeamTokens(team2);
+            }
+        }
+
+        function renderTeamTokens(team) {
+            team.players.forEach((player) => {
+                const token = document.createElement('div');
+                token.className = 'player-token';
+                token.id = `token-${player.id}`;
+                token.dataset.teamId = team.id;
+                token.dataset.playerId = player.id;
+                
+                token.style.background = `linear-gradient(135deg, ${team.color1} 50%, ${team.color2} 50%)`;
+                token.style.left = `${player.x}%`;
+                token.style.top = `${player.y}%`;
+                
+                token.innerHTML = `
+                    <span class="player-num">${player.num}</span>
+                    <div class="player-name-label">${player.name}</div>
+                `;
+
+                setupDraggable(token, player);
+                pitch.appendChild(token);
+            });
+        }
+
+        function updateTokenColors() {
+            document.querySelectorAll('.player-token').forEach(token => {
+                const tId = parseInt(token.dataset.teamId);
+                const team = tId === 1 ? team1 : team2;
+                token.style.background = `linear-gradient(135deg, ${team.color1} 50%, ${team.color2} 50%)`;
+            });
+        }
+
+        function updateTokenData(playerId) {
+            const token = document.getElementById(`token-${playerId}`);
+            if (token) {
+                let playerObj = team1.players.find(p => p.id === playerId) || team2.players.find(p => p.id === playerId);
+                if (playerObj) {
+                    token.querySelector('.player-num').textContent = playerObj.num;
+                    token.querySelector('.player-name-label').textContent = playerObj.name;
+                }
+            }
+        }
+
+        function setupDraggable(element, playerRef) {
+            let startX, startY;
+            let dragGroup = [];
+            let initialPositions = [];
+
+            // Birbirine yapışık olan oyuncuları (grubu) bulan fonksiyon
+            const getGroup = (startPlayer, allPlayers, threshold = 3.5) => {
+                let group = new Set([startPlayer]);
+                let queue = [startPlayer];
+                while (queue.length > 0) {
+                    let current = queue.shift();
+                    allPlayers.forEach(p => {
+                        if (!group.has(p) && p.x !== null && p.y !== null && p.id !== 'ball') {
+                            let dist = Math.sqrt(Math.pow(current.x - p.x, 2) + Math.pow(current.y - p.y, 2));
+                            if (dist < threshold) {
+                                group.add(p);
+                                queue.push(p);
+                            }
+                        }
+                    });
+                }
+                return Array.from(group);
+            };
+
+            const dragStart = (e) => {
+                if (currentTool !== 'move') return; // Handled by drawing logic
+                
+                const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+                const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+
+                startX = clientX;
+                startY = clientY;
+                
+                const allPlayers = [...team1.players, ...team2.players];
+                
+                // Snap aktifse ve top değilse bağlantılı oyuncuları gruba al
+                dragGroup = (snapEnabled && playerRef.id !== 'ball') ? getGroup(playerRef, allPlayers) : [playerRef];
+                
+                initialPositions = dragGroup.map(p => ({ 
+                    id: p.id, 
+                    x: p.x, 
+                    y: p.y 
+                }));
+
+                draggedToken = element;
+                document.body.classList.add('dragging');
+
+                if (e.type === 'touchstart') e.preventDefault(); 
+
+                document.addEventListener('mousemove', dragMove);
+                document.addEventListener('mouseup', dragEnd);
+                document.addEventListener('touchmove', dragMove, { passive: false });
+                document.addEventListener('touchend', dragEnd);
+            };
+
+            const dragMove = (e) => {
+                if (!draggedToken) return;
+                if (e.type === 'touchmove') e.preventDefault();
+
+                const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+                const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+
+                const dx = clientX - startX;
+                const dy = clientY - startY;
+
+                const pitchRect = pitch.getBoundingClientRect();
+                
+                // Convert pixel delta to percentage delta
+                const dxPercent = (dx / pitchRect.width) * 100;
+                const dyPercent = (dy / pitchRect.height) * 100;
+
+                let primaryNewX = initialPositions[0].x + dxPercent;
+                let primaryNewY = initialPositions[0].y + dyPercent;
+
+                let snapOffsetX = 0;
+                let snapOffsetY = 0;
+
+                // Snap Logic (Grubu yeni bir oyuncuya mıknatısla)
+                if (snapEnabled && playerRef.id !== 'ball') {
+                    const allPlayers = [...team1.players, ...team2.players];
+                    for (let i = 0; i < allPlayers.length; i++) {
+                        const p = allPlayers[i];
+                        // Eğer p oyuncusu grupta değilse ve sahadaysa
+                        if (!dragGroup.find(gp => gp.id === p.id) && p.x !== null && p.y !== null && p.id !== 'ball') {
+                            const dist = Math.sqrt(Math.pow(primaryNewX - p.x, 2) + Math.pow(primaryNewY - p.y, 2));
+                            if (dist < 3.5) { // Mesafe eşiği
+                                snapOffsetX = (p.x + 1.8) - primaryNewX; // Ofset hesabı
+                                snapOffsetY = (p.y + 1.8) - primaryNewY;
+                                break; 
+                            }
+                        }
+                    }
+                }
+
+                // Tüm gruptaki oyuncuların konumunu güncelle
+                dragGroup.forEach((pRef, index) => {
+                    let newX = initialPositions[index].x + dxPercent + snapOffsetX;
+                    let newY = initialPositions[index].y + dyPercent + snapOffsetY;
+
+                    newX = Math.max(0, Math.min(newX, 100));
+                    newY = Math.max(0, Math.min(newY, 100));
+
+                    pRef.x = newX;
+                    pRef.y = newY;
+
+                    const tokenDom = document.getElementById(pRef.id === 'ball' ? 'football' : `token-${pRef.id}`);
+                    if (tokenDom) {
+                        tokenDom.style.left = `${newX}%`;
+                        tokenDom.style.top = `${newY}%`;
+                    }
+                });
+            };
+
+            const dragEnd = () => {
+                draggedToken = null;
+                dragGroup = [];
+                document.body.classList.remove('dragging');
+                
+                document.removeEventListener('mousemove', dragMove);
+                document.removeEventListener('mouseup', dragEnd);
+                document.removeEventListener('touchmove', dragMove);
+                document.removeEventListener('touchend', dragEnd);
+            };
+
+            element.addEventListener('mousedown', dragStart);
+            element.addEventListener('touchstart', dragStart, { passive: false });
+        }
+
+        function getPitchCoords(e) {
+            const rect = pitch.getBoundingClientRect();
+            const clientX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+            const clientY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+            return {
+                x: ((clientX - rect.left) / rect.width) * 100,
+                y: ((clientY - rect.top) / rect.height) * 100
+            };
+        }
+
+        pitch.addEventListener('mousedown', startDrawing);
+        pitch.addEventListener('touchstart', (e) => {
+            if(currentTool !== 'move') { e.preventDefault(); startDrawing(e); }
+        }, { passive: false });
+
+        function startDrawing(e) {
+            if (currentTool === 'move') return;
+            // Don't draw if clicking on a player token directly (though pointer-events:none usually handles this)
+            
+            const startPos = getPitchCoords(e);
+            isDrawing = true;
+
+            if (currentTool === 'arrow') {
+                currentDrawing = {
+                    type: 'arrow',
+                    x1: startPos.x, y1: startPos.y,
+                    x2: startPos.x, y2: startPos.y
+                };
+                drawings.push(currentDrawing);
+                
+                document.addEventListener('mousemove', drawMove);
+                document.addEventListener('mouseup', endDrawing);
+                document.addEventListener('touchmove', drawMove, { passive: false });
+                document.addEventListener('touchend', endDrawing);
+            } else if (currentTool === 'rect') {
+                currentDrawing = {
+                    type: 'rect',
+                    startX: startPos.x, startY: startPos.y,
+                    x: startPos.x, y: startPos.y,
+                    w: 0, h: 0,
+                    color: document.getElementById('rectColorPicker').value
+                };
+                drawings.push(currentDrawing);
+                
+                document.addEventListener('mousemove', drawMove);
+                document.addEventListener('mouseup', endDrawing);
+                document.addEventListener('touchmove', drawMove, { passive: false });
+                document.addEventListener('touchend', endDrawing);
+            } else if (currentTool === 'cross' || currentTool === 'circle') {
+                drawings.push({
+                    type: currentTool,
+                    x: startPos.x,
+                    y: startPos.y
+                });
+                renderDrawings();
+                isDrawing = false;
+            }
+            renderDrawings();
+        }
+
+        function drawMove(e) {
+            if (!isDrawing || !currentDrawing) return;
+            if (e.type === 'touchmove') e.preventDefault();
+            
+            const pos = getPitchCoords(e);
+            
+            if (currentTool === 'arrow') {
+                currentDrawing.x2 = pos.x;
+                currentDrawing.y2 = pos.y;
+            } else if (currentTool === 'rect') {
+                currentDrawing.x = Math.min(currentDrawing.startX, pos.x);
+                currentDrawing.y = Math.min(currentDrawing.startY, pos.y);
+                currentDrawing.w = Math.abs(pos.x - currentDrawing.startX);
+                currentDrawing.h = Math.abs(pos.y - currentDrawing.startY);
+            }
+            renderDrawings();
+        }
+
+        function endDrawing() {
+            isDrawing = false;
+            currentDrawing = null;
+            document.removeEventListener('mousemove', drawMove);
+            document.removeEventListener('mouseup', endDrawing);
+            document.removeEventListener('touchmove', drawMove);
+            document.removeEventListener('touchend', endDrawing);
+        }
+
+        function renderDrawings() {
+            drawingsGroup.innerHTML = '';
+            drawings.forEach(d => {
+                if (d.type === 'arrow') {
+                    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.setAttribute("x1", `${d.x1}%`);
+                    line.setAttribute("y1", `${d.y1}%`);
+                    line.setAttribute("x2", `${d.x2}%`);
+                    line.setAttribute("y2", `${d.y2}%`);
+                    line.setAttribute("stroke", "#1f2937"); // gray-800
+                    line.setAttribute("stroke-width", "3");
+                    line.setAttribute("stroke-dasharray", "8, 4");
+                    line.setAttribute("marker-end", "url(#arrowhead)");
+                    drawingsGroup.appendChild(line);
+                } else if (d.type === 'cross') {
+                    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    text.setAttribute("x", `${d.x}%`);
+                    text.setAttribute("y", `${d.y}%`);
+                    text.setAttribute("fill", "#dc2626"); // red-600
+                    text.setAttribute("font-size", "24");
+                    text.setAttribute("font-weight", "bold");
+                    text.setAttribute("text-anchor", "middle");
+                    text.setAttribute("dominant-baseline", "middle");
+                    text.textContent = "X";
+                    drawingsGroup.appendChild(text);
+                } else if (d.type === 'circle') {
+                    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    text.setAttribute("x", `${d.x}%`);
+                    text.setAttribute("y", `${d.y}%`);
+                    text.setAttribute("fill", "#2563eb"); // blue-600
+                    text.setAttribute("font-size", "26");
+                    text.setAttribute("font-weight", "bold");
+                    text.setAttribute("text-anchor", "middle");
+                    text.setAttribute("dominant-baseline", "middle");
+                    text.textContent = "O";
+                    drawingsGroup.appendChild(text);
+                } else if (d.type === 'rect') {
+                    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                    rect.setAttribute("x", `${d.x}%`);
+                    rect.setAttribute("y", `${d.y}%`);
+                    rect.setAttribute("width", `${d.w}%`);
+                    rect.setAttribute("height", `${d.h}%`);
+                    rect.setAttribute("fill", d.color);
+                    rect.setAttribute("fill-opacity", "0.3"); // Yarı saydam
+                    rect.setAttribute("stroke", d.color);
+                    rect.setAttribute("stroke-width", "2");
+                    rect.setAttribute("rx", "4"); // Hafif yuvarlak köşeler
+                    drawingsGroup.appendChild(rect);
+                }
+            });
+        }
+
+        const saveBtn = document.getElementById('saveBtn');
+        const loadBtn = document.getElementById('loadBtn');
+        const selectElement = document.getElementById('savedLineupsSelect');
+
+        function loadSavedLineupsList() {
+            const saves = JSON.parse(localStorage.getItem('futbolLineupSaves') || '{}');
+            selectElement.innerHTML = '<option value="">Kayıtlı Kadro Seç...</option>';
+            Object.keys(saves).forEach(key => {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.textContent = key;
+                selectElement.appendChild(opt);
+            });
+        }
+
+        saveBtn.addEventListener('click', () => {
+            const saveName = prompt("Kadroya bir isim verin (Örn: Derbi Kadrosu):");
+            if (!saveName || saveName.trim() === "") return;
+
+            const saveObj = {
+                mode: currentMode,
+                team1: team1,
+                team2: team2,
+                drawings: drawings,
+                ball: ball
+            };
+
+            const saves = JSON.parse(localStorage.getItem('futbolLineupSaves') || '{}');
+            saves[saveName] = saveObj;
+            localStorage.setItem('futbolLineupSaves', JSON.stringify(saves));
+            loadSavedLineupsList();
+            
+            // Custom modern alert replacement for success
+            const btnOriginalText = saveBtn.innerHTML;
+            saveBtn.innerHTML = '<i class="fas fa-check mr-1"></i> Kaydedildi!';
+            saveBtn.classList.replace('bg-green-500', 'bg-teal-500');
+            setTimeout(() => {
+                saveBtn.innerHTML = btnOriginalText;
+                saveBtn.classList.replace('bg-teal-500', 'bg-green-500');
+            }, 2000);
+        });
+
+        loadBtn.addEventListener('click', () => {
+            const saveName = selectElement.value;
+            if (!saveName) return;
+
+            const saves = JSON.parse(localStorage.getItem('futbolLineupSaves') || '{}');
+            const data = saves[saveName];
+            
+            if(data) {
+                currentMode = data.mode;
+                modeSelect.value = currentMode;
+                // Trigger change event to fix UI visibility
+                modeSelect.dispatchEvent(new Event('change'));
+
+                team1 = data.team1;
+                team2 = data.team2;
+                drawings = data.drawings || [];
+                ball = data.ball || { id: 'ball', x: 50, y: 50 };
+
+                // Sync UI inputs with loaded data
+                document.getElementById('team1Color1').value = team1.color1;
+                document.getElementById('team1Color2').value = team1.color2;
+                document.getElementById('team1Tactic').value = team1.tactic;
+
+                document.getElementById('team2Color1').value = team2.color1;
+                document.getElementById('team2Color2').value = team2.color2;
+                document.getElementById('team2Tactic').value = team2.tactic;
+
+                updateBallPosition();
+                renderPlayerList();
+                renderPitch();
+                renderDrawings();
+            }
+        });
+
+        function updateBallPosition() {
+            footballEl.style.left = `${ball.x}%`;
+            footballEl.style.top = `${ball.y}%`;
+        }
+
+        // Initialize App
+        window.addEventListener('DOMContentLoaded', () => {
+            loadSavedLineupsList();
+            applyDefaultPositions();
+            updateBallPosition();
+            setupDraggable(footballEl, ball); // Topu da sürüklenebilir yapıyoruz
+            renderPlayerList();
+            renderPitch();
+        });
+
+    </script>
+</body>
+</html>
